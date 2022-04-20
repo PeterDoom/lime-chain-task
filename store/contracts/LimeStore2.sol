@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//TODO Add GetAllTransactionsMethod + Finish Refund
-
 pragma solidity ^0.8.0;
 import "./Ownable.sol";
 
@@ -9,7 +7,7 @@ contract LimeStore is Ownable {
     address payable public storeAddress = payable(address(this));
     uint public storeBalance = 0;
 
-    // event TransactionStatus(bool isSuccessful, Transaction transaction);
+    event TransactionStatus(bool isSuccessful, Transaction transaction);
 
     struct Product {
         uint256 id;
@@ -74,7 +72,7 @@ contract LimeStore is Ownable {
             abi.encodeWithSignature("transferTo(address)", "call transferTo", msg.sender)
             );
 
-            // emit TransactionStatus(isSuccessful, newTransaction);
+            emit TransactionStatus(isSuccessful, newTransaction);
             storeBalance+= msg.value;
 
         } else {
@@ -90,7 +88,7 @@ contract LimeStore is Ownable {
             (bool isSuccessful, ) = storeAddress.call(
             abi.encodeWithSignature("transferTo(address)", "call transferTo", msg.sender)
             );  
-            // emit TransactionStatus(isSuccessful, newTransaction);
+            emit TransactionStatus(isSuccessful, newTransaction);
             storeBalance+= msg.value;
         }
 
@@ -99,7 +97,7 @@ contract LimeStore is Ownable {
     function refund(uint productId, uint quantity) external payable {
         require(block.number <= 100, "Refund Time expired");
         require(checkIfIdExists(keys, productId), "Product like this does not exist");
-        require(isProductBought(customerTransactions[msg.sender], productId), "You don't own this product");
+        require(!isProductBought(customerTransactions[msg.sender], productId), "You don't own this product");
 
         Transaction memory customerTransaction = findTransactionChronologically(customerTransactions[msg.sender], productId); 
         require(customerTransaction.productQuantity >= quantity, "Requested quantity is invalid");
@@ -115,8 +113,8 @@ contract LimeStore is Ownable {
             abi.encodeWithSignature("transferFundsTo(address)", "call transferFundsTo", storeAddress)
             );  
 
-        // emit TransactionStatus(isSuccessful, newTransaction);
-            storeBalance-= msg.value;    
+        emit TransactionStatus(isSuccessful, newTransaction);
+        storeBalance= storeBalance - msg.value;    
     }
 
     function addItem(uint256 productId, string memory productName, uint256 productPrice, uint256 productQuantity) external isOwner {
@@ -189,7 +187,7 @@ contract LimeStore is Ownable {
                 isRefund
             );
 
-            uint newTransactionId = transactionKeys[transactionKeys.length - 1] + 1; 
+            uint newTransactionId = block.timestamp; 
             
             transactions[newTransactionId] = _transaction;
             transactionKeys.push(newTransactionId);
