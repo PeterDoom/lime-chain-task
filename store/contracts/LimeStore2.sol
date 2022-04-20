@@ -9,7 +9,7 @@ contract LimeStore is Ownable {
     address payable public storeAddress = payable(address(this));
     uint public storeBalance = 0;
 
-    event TransactionStatus(bool isSuccessful, Transaction transaction);
+    // event TransactionStatus(bool isSuccessful, Transaction transaction);
 
     struct Product {
         uint256 id;
@@ -74,7 +74,7 @@ contract LimeStore is Ownable {
             abi.encodeWithSignature("transferTo(address)", "call transferTo", msg.sender)
             );
 
-            emit TransactionStatus(isSuccessful, newTransaction);
+            // emit TransactionStatus(isSuccessful, newTransaction);
             storeBalance+= msg.value;
 
         } else {
@@ -88,9 +88,9 @@ contract LimeStore is Ownable {
             handleInvetory(productId, quantity, "dec");
 
             (bool isSuccessful, ) = storeAddress.call(
-            abi.encodeWithSignature("transferTo(address)", "call transferTo", payable(msg.sender))
+            abi.encodeWithSignature("transferTo(address)", "call transferTo", msg.sender)
             );  
-            emit TransactionStatus(isSuccessful, newTransaction);
+            // emit TransactionStatus(isSuccessful, newTransaction);
             storeBalance+= msg.value;
         }
 
@@ -115,7 +115,7 @@ contract LimeStore is Ownable {
             abi.encodeWithSignature("transferFundsTo(address)", "call transferFundsTo", storeAddress)
             );  
 
-        emit TransactionStatus(isSuccessful, newTransaction);
+        // emit TransactionStatus(isSuccessful, newTransaction);
             storeBalance-= msg.value;    
     }
 
@@ -138,7 +138,7 @@ contract LimeStore is Ownable {
     }
 
     function restockProduct(uint productId, int quantity) external isOwner{
-        require(!checkIfIdExists(keys, productId), "Product with this Id doesn't exist");
+        require(checkIfIdExists(keys, productId), "Product with this Id doesn't exist");
         handleInvetory(productId, uint(quantity), "inc");
     }
 
