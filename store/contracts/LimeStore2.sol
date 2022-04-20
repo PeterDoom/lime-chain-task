@@ -9,6 +9,8 @@ contract LimeStore is Ownable {
     address payable public storeAddress = payable(address(this));
     uint public storeBalance = 0;
 
+    event TransactionStatus(bool isSuccessful, Transaction transaction);
+
     struct Product {
         uint256 id;
         string productName;
@@ -27,6 +29,7 @@ contract LimeStore is Ownable {
         uint256 productId;
         uint256 pricePaid;
         uint productQuantity;
+        bool refunded;
     }
 
     mapping(uint256 => Transaction) private transactions;
@@ -62,7 +65,7 @@ contract LimeStore is Ownable {
         if (doesCustomerExist(customerKeys, msg.sender)){
             require(!isProductBought(customerTransactions[msg.sender], productId), "Product is already purchased");
             
-            Transaction memory newTransaction = initiateTransaction(products[productId], quantity, msg.sender);
+            Transaction memory newTransaction = initiateTransaction(products[productId], quantity, msg.sender, false);
             customerTransactions[msg.sender].push(newTransaction);
 
             handleInvetory(productId, quantity, "dec");
@@ -71,6 +74,7 @@ contract LimeStore is Ownable {
             abi.encodeWithSignature("transferTo(address)", "call transferTo", msg.sender)
             );
 
+            emit TransactionStatus(isSuccessful, newTransaction);
             storeBalance+= msg.value;
 
         } else {
@@ -78,22 +82,41 @@ contract LimeStore is Ownable {
             previousCustomers[newCustomer.customerWallet] = newCustomer;
             customerKeys.push(newCustomer.customerWallet);
 
-            Transaction memory newTransaction = initiateTransaction(products[productId], quantity, msg.sender);
+            Transaction memory newTransaction = initiateTransaction(products[productId], quantity, msg.sender, false);
             customerTransactions[msg.sender].push(newTransaction);
 
             handleInvetory(productId, quantity, "dec");
 
             (bool isSuccessful, ) = storeAddress.call(
-            abi.encodeWithSignature("transferTo(address)", "call transferTo", msg.sender)
-        );  
-
+            abi.encodeWithSignature("transferTo(address)", "call transferTo", payable(msg.sender))
+            );  
+            emit TransactionStatus(isSuccessful, newTransaction);
             storeBalance+= msg.value;
         }
 
     }
 
-    function refund(uint productId) external payable {
+    function refund(uint productId, uint quantity) external payable {
         require(block.number <= 100, "Refund Time expired");
+        require(checkIfIdExists(keys, productId), "Product like this does not exist");
+        require(isProductBought(customerTransactions[msg.sender], productId), "You don't own this product");
+
+        Transaction memory customerTransaction = findTransactionChronologically(customerTransactions[msg.sender], productId); 
+        require(customerTransaction.productQuantity >= quantity, "Requested quantity is invalid");
+        require(!customerTransaction.refunded, "This item has been refunded already");
+        require(storeBalance >= products[productId].productPrice, "The store cannot pay for a refund");
+
+        handleInvetory(productId, quantity, "inc");
+
+        Transaction memory newTransaction = initiateTransaction(products[productId], quantity, msg.sender, true);
+            customerTransactions[msg.sender].push(newTransaction);
+
+        (bool isSuccessful, ) = msg.sender.call(
+            abi.encodeWithSignature("transferFundsTo(address)", "call transferFundsTo", storeAddress)
+            );  
+
+        emit TransactionStatus(isSuccessful, newTransaction);
+            storeBalance-= msg.value;    
     }
 
     function addItem(uint256 productId, string memory productName, uint256 productPrice, uint256 productQuantity) external isOwner {
@@ -114,8 +137,21 @@ contract LimeStore is Ownable {
         productQuantities[product.id] = productQuantity;
     }
 
-    function checkIfIdExists(uint256[] memory _keys, uint256 idToCheck) private pure returns (bool)
-    {
+    function restockProduct(uint productId, int quantity) external isOwner{
+        require(!checkIfIdExists(keys, productId), "Product with this Id doesn't exist");
+        handleInvetory(productId, uint(quantity), "inc");
+    }
+
+    function seeAllTransactions() public view returns (Transaction[] memory){
+        Transaction[] memory allTransactions = new Transaction[](transactionKeys.length);
+
+        for (uint256 i = 0; i < transactionKeys.length; i++) {
+            allTransactions[i] = (transactions[transactionKeys[i]]);
+        } 
+        return allTransactions;
+    }
+
+    function checkIfIdExists(uint256[] memory _keys, uint256 idToCheck) private pure returns (bool){
         for (uint256 i = 0; i < _keys.length; i++) {
             if (_keys[i] == idToCheck) {
                 return true;
@@ -143,14 +179,20 @@ contract LimeStore is Ownable {
         return false;
     }
 
-    function initiateTransaction(Product memory product, uint productQuantity ,address customerAddress) private pure returns (Transaction memory transaction) {
+    function initiateTransaction(Product memory product, uint productQuantity ,address customerAddress, bool isRefund) private returns (Transaction memory transaction) {
              Transaction memory _transaction = Transaction(
                 product.currentOwner,
                 customerAddress,
                 product.id,
                 product.productPrice,
-                productQuantity
+                productQuantity,
+                isRefund
             );
+
+            uint newTransactionId = transactionKeys[transactionKeys.length - 1] + 1; 
+            
+            transactions[newTransactionId] = _transaction;
+            transactionKeys.push(newTransactionId);
 
             return _transaction;
     }
@@ -172,5 +214,14 @@ contract LimeStore is Ownable {
             productQuantities[productId] -= productQuantity;
         }
 
+    }
+
+    function findTransactionChronologically(Transaction [] memory _customerTransactions, uint productId) private pure returns (Transaction memory customerTransaction){
+        for (uint i = _customerTransactions.length - 1; i >= 0; i--) {
+            if (_customerTransactions[i].productId == productId) {
+                return _customerTransactions[i];
+            }
+        }
+        
     }
 }
